@@ -1,0 +1,126 @@
+PHASE_1:
+part of the code...
+8048f34:	83 ec 08             	sub    $0x8,%esp
+ 8048f37:	c7 44 24 04 74 9f 04 	movl   $0x8049f74,0x4(%esp)
+ 8048f3e:	08 
+ 8048f3f:	8b 45 08             	mov    0x8(%ebp),%eax
+ 8048f42:	89 04 24             	mov    %eax,(%esp)
+ 8048f45:	e8 91 01 00 00       	call   80490db <strings_not_equal>
+I saw the strings_not_equal function being called
+and I assumed that it would take 2 strings as 
+arguments.  That meant that one of the strings
+was my input, and one of the strings was hardcoded
+in.  It turned out to be at:
+
+0x8049f74
+
+and I used 'x/100c 0x8049f74' to see the string.
+answer: 'I turned the moon into something I 
+like to call a Death Star.'
+
+PHASE_2:
+do a bunch of stuff... then:
+ 804908d:	e8 da 09 00 00       	call   8049a6c <read_six_numbers>
+ 8049092:	8d 5d e8             	lea    -0x18(%ebp),%ebx
+ 8049095:	8b 43 fc             	mov    -0x4(%ebx),%eax
+ 8049098:	83 e8 03             	sub    $0x3,%eax
+ 804909b:	39 03                	cmp    %eax,(%ebx)
+ 804909d:	74 05                	je     80490a4 <phase_2+0x2b>
+ 804909f:	e8 b5 08 00 00       	call   8049959 <explode_bomb>
+ 80490a4:	83 c3 04             	add    $0x4,%ebx
+ 80490a7:	8d 45 fc             	lea    -0x4(%ebp),%eax
+ 80490aa:	39 c3                	cmp    %eax,%ebx
+ 80490ac:	75 e7                	jne    8049095 <phase_2+0x1c>
+ 
+I could tell there was a loop that read six numbers
+because of the jump statements and the function call.
+I guessed that ebx held the value for i in the loop
+because it was getting checked last and increased
+each time.  Then I saw that each time before eax was
+checked with some value, 3 was subtracted from it:
+
+ 8049098:	83 e8 03             	sub    $0x3,%eax
+ 804909b:	39 03                	cmp    %eax,(%ebx)
+
+So I guessed that each number was just that number with 3
+subtracted from it, and it turned out to be correct.
+answer: 21 18 15 12 9 6
+
+PHASE_3:
+The top of the code looks like:
+8048f59:	55                   	push   %ebp
+ 8048f5a:	89 e5                	mov    %esp,%ebp
+ 8048f5c:	83 ec 28             	sub    $0x28,%esp
+ 8048f5f:	8d 45 fc             	lea    -0x4(%ebp),%eax
+ 8048f62:	89 44 24 08          	mov    %eax,0x8(%esp)
+ 8048f66:	c7 44 24 04 4c a2 04 	movl   $0x804a24c,0x4(%esp)
+ 8048f6d:	08 
+ 8048f6e:	8b 45 08             	mov    0x8(%ebp),%eax
+ 8048f71:	89 04 24             	mov    %eax,(%esp)
+ 8048f74:	e8 2b fb ff ff       	call   8048aa4 <sscanf@plt>
+ 
+ If you examine 0x804a24c as a string you'll know the argument
+ to sscanf to tell what it's looking for.  My case was '%d %d'
+ so it was looking for 2 decimal values.  I put in 2 random numbers.
+ It then went to a jump table which I stepped through with the
+ 'si'
+ command until I got to a cmp statement that checked the second number
+ to %eax and checked the value of %eax at that point.
+ answer: 2 674
+ 
+PHASE_4:
+ The exact same process of phase 3, in fact the initial code
+ looks the same because of the sscanf function.  It's looking
+ for a decimal and a string.  I'm not sure what the string is
+ for because it doesn't seem to be used...
+ 
+ It checks if sscanf returned correctly and if my number
+ was greater then zero then runs func4 on it: 
+ 
+ 8048f74:	e8 2b fb ff ff       	call   8048aa4 <sscanf@plt>
+ 8048f79:	83 f8 01             	cmp    $0x1,%eax
+ 8048f7c:	75 06                	jne    8048f84 <phase_4+0x2b>
+ 8048f7e:	83 7d fc 00          	cmpl   $0x0,-0x4(%ebp)
+ 8048f82:	7f 09                	jg     8048f8d <phase_4+0x34>
+ 8048f84:	8d 74 26 00          	lea    0x0(%esi),%esi
+ 8048f88:	e8 cc 09 00 00       	call   8049959 <explode_bomb>
+ 8048f8d:	8b 45 fc             	mov    -0x4(%ebp),%eax
+ 8048f90:	89 04 24             	mov    %eax,(%esp)
+ 8048f93:	e8 98 fd ff ff       	call   8048d30 <func4>
+ 8048f98:	3d 57 01 00 00       	cmp    $0x157,%eax
+ 8048f9d:	74 05                	je     8048fa4 <phase_4+0x4b>
+ 8048f9f:	e8 b5 09 00 00       	call   8049959 <explode_bomb> 
+ 
+ After func4 it compares %eax, usually the return value of functions,
+ to an arbitrary hex value 0x157.  So eax is what func4 returns,
+ and all I needed to know was what func4 does to my number.  I set
+ a breakpoint at the cmp statement 8048f98 and gave it different 
+ numbers each time to see if I could see a pattern.  Turns out
+ func4 recursively calls 7^n where n is the argument you give it.
+ and 0x157 is 343 in decimal so the answer was '3'.
+ answer: 3 somestringidontknowhwatitdoes.
+ 
+ NOTE: The second argument here is how you get into the secret phase.
+ You have to search the bomb_diffused() function for a compare
+ statement that takes this string as an argument and see
+ what it is supposed to be.  It will be something Austin
+ Powers themed; mine was minime.
+ 
+ PHASE_5
+ 
+ I stared at the code for a while before realizing that it took
+ my input, split it into 6 letters, then did bit operations on those
+ letters.  So I started giving it strings of alphebetical letters
+ "abcde" and "fghijk" just to see what it would spit out at the end.
+ Here's what my table ended up looking like:
+ 
+ a = s
+ b = r
+ c = v
+ d = e
+ e = a
+ f = w
+ ...
+ k = n
+ m = t
+ p = i
