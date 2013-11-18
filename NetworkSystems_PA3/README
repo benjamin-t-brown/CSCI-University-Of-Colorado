@@ -1,0 +1,24 @@
+CSCI 4273 Programming Assignment 3 by Benjamin Brown
+
+This program simulates a network topology of connected routers and 
+uses Dykstra's algorithm to find the shortest path between two routers,
+generating a 'next hop' table.
+
+Routers continuously broadcast their routing tables (adjacent routers) at
+1 second intervals.  In this way the network will converge to the most 
+optimal state. 
+
+Use the makefile to compile the program. 
+
+To run the program, the command is
+
+./routed_LS <Router Name> <logfile> <initfile>
+
+Where the router name is a single capital char, logfile is the path to the
+logfile for this router, and initfile is the link state of the routers.
+
+You will need to open 1 terminal per router in the initfile.
+
+To exit cleanly (and unbind the ports) simply type 'quit' into any of 
+the windows, and the routers will flood the command to each of its 
+neighbors before quitting, resulting in all of the routers exiting cleanly.
