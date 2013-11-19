@@ -1,0 +1,545 @@
+
+<html>
+
+<!-- EDIT WHICH IMAGE YOU WANT TO LOAD HERE \/ -->
+<body id="bod" onload="load_raw_picture('ferris.png');" >
+
+JPEG COMPRESSION SCRIPT - by Benjamin Brown<br><br>
+
+<script>
+
+//Load the picture, start the script
+function load_raw_picture(url){
+    var imageObj = new Image();
+    imageObj.onload = function() {
+        begin(imageObj);
+    };   
+    imageObj.src = url; 
+}
+
+//MAIN FUCNTION
+function begin(image){
+
+	var canvas = draw_image_to_canvas(image, false);
+	var ctx = canvas.getContext('2d');
+
+	var comp = new JPEG_Compressor(ctx);
+
+	add_elem("<div>Original Image</div>");
+	add_obj(canvas);
+	add_elem("<br><br>");
+
+	var imgdata = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+	var nimgdata = comp.compress( imgdata, 95 );
+
+	add_elem("<div>Post Compression: High Quality, Low Compression (Q95)</div>");
+	add_obj( draw_data_to_canvas(nimgdata, false) );
+	add_elem("<br><br>");	
+
+	var nimgdata = comp.compress( imgdata, 10 );
+
+	add_elem("<div>Post Compression: Low Quality, High Compression (Q10)</div>");
+	add_obj( draw_data_to_canvas(nimgdata, false) );
+	add_elem("<br><br>");		
+}
+
+//HELPER add a document-created object to the body of the html
+function add_obj(obj){
+    document.getElementById("bod").appendChild(obj);
+}
+
+//HELPER add a string element to the body of the html (without rewriting the innerHTML)
+function add_elem(txt){
+    //document.getElementById("bod").innerHTML = document.getElementById("bod").innerHTML + txt; 
+    document.getElementById("bod").insertAdjacentHTML('beforeend', txt);
+}
+
+//Draw an image to a canvas object, if the canvas object is false, create a new canvas object
+function draw_image_to_canvas(image, canvas){
+	var context;
+
+	if( canvas == undefined || canvas == false ){
+	    var ncanvas = document.createElement("canvas");
+	    ncanvas.width = image.width;
+	    ncanvas.height = image.height;
+	    ncanvas.style.width = image.width;
+	    ncanvas.style.height = image.height;    
+	    context = ncanvas.getContext("2d");
+	} else {
+		context = canvas.getContext("2d");
+	}
+
+    context.drawImage(image,0,0);   
+
+    if( canvas == undefined || canvas == false )
+    	return ncanvas;
+    else
+    	return 0;
+}
+
+//Same as above but with HTML5 imagedata
+function draw_data_to_canvas(imgdata, canvas){
+	var context;
+
+	if( canvas == undefined || canvas == false ){
+	    var ncanvas = document.createElement("canvas");
+	    ncanvas.width = imgdata.width;
+	    ncanvas.height = imgdata.height;
+	    ncanvas.style.width = imgdata.width;
+	    ncanvas.style.height = imgdata.height;    
+	    context = ncanvas.getContext("2d");
+	} else {
+		context = canvas.getContext("2d");
+	}
+
+    context.putImageData(imgdata,0,0);   
+
+    if( canvas == undefined || canvas == false )
+    	return ncanvas;
+    else
+    	return 0;
+}
+
+//Convert an image to greyscale using the rgb avg method
+//EDIT: Unused but still useful if you find that JPEG greyscale works better
+function to_greyscale( imgdata, ctx ){
+
+	var w = imgdata.width;
+	var h = imgdata.height;
+
+	var nimgdata = ctx.createImageData(w, h);
+	for( var i = 0; i < imgdata.data.length; i+=4) {
+		var entry = (i);
+		var r = imgdata.data[entry+0]; 
+		var g = imgdata.data[entry+1]; 
+		var b = imgdata.data[entry+2];
+		var a = imgdata.data[entry+3];
+		if( a > 255/2 ){
+			var avg = ((r+g+b)/3.0);
+		} else {
+			var avg = 255;
+		}
+
+
+		nimgdata.data[entry+0] = avg;
+		nimgdata.data[entry+1] = avg;
+		nimgdata.data[entry+2] = avg;
+		nimgdata.data[entry+3] = 255;
+	}
+	return nimgdata;
+}
+
+//Pretty print a matrix into the html body
+function html_matrix( mat, fixed ){
+	var h = mat.length;
+	var w = mat[0].length;
+
+	function fnl(num, length) {
+	    var r = "" + num;
+	    while (r.length < length) {
+	        r = "#" + r;
+	    }
+	    return r;
+	}
+
+	var div = "<div><h1>MATRIX</h1><br>";
+	for( var j = 0; j < h; ++j ){
+		var str = " &nbsp&nbsp&nbsp";
+		for( var i = 0; i < w-1; ++i ){
+			str += fnl(mat[j][i].toFixed(fixed), 6) + ",&nbsp&nbsp";
+		}
+		str += fnl(mat[j][w-1].toFixed(fixed), 6) + "<br>"
+		div += str;
+	}
+	div += "</div>"
+
+	add_elem( div );	
+}
+
+var JPEG_Compressor = function(ctx){
+
+	this.C;		//2d discrete cosine transform matrix
+	this.Ct;	//Transpose of C
+	this.Q50;	//The standard quantization matrix (quality level of 50)
+
+	this.ctx = ctx;
+
+	this.init();
+}
+
+JPEG_Compressor.prototype.init = function(){
+	this.gen_dct( 8, 8 ); 
+	this.Ct = this.mat_trans(this.C);
+
+	this.Q50 = [	[16, 11, 10, 16, 24,  40,  51,  61 ],
+					[12, 12, 14, 19, 26,  58,  60,  55 ],
+					[14, 13, 16, 24, 40,  57,  69,  56 ],
+					[14, 17, 22, 29, 51,  87,  80,  62 ],
+					[18, 22, 37, 56, 68,  109, 103, 77 ],
+					[24, 35, 55, 64, 81,  104, 113, 92 ],
+					[49, 64, 78, 87, 103, 121, 120, 101],
+					[72, 92, 95, 98, 112, 100, 103, 99 ] ];
+}
+
+/**
+ * Given the html5 image data of an image object and a quantization level,
+ * compress the image using the JPEG 1992 dst method.  Also draws the compressed
+ * part of the image to a new canvas and appends it to the html body.  
+ * @param  {Array} imgdata 	HTML5 specified image data from the ctx.getImageData() method
+ * @param  {int}   quant   	The quantization level from 1 to 97 (1 = low quality, high comp - 97 = high quality, low comp)
+ * @return {Array}         	HTML5 specified image data that can be written to a ctx
+ */
+JPEG_Compressor.prototype.compress = function( imgdata, quant ){
+	// var block = [ 	[154, 123, 123, 123, 123, 123, 123, 136],
+	// 				[192, 180, 136, 154, 154, 154, 136, 110],
+	// 				[254, 198, 154, 154, 180, 154, 123, 123],
+	// 				[239, 180, 136, 180, 180, 166, 123, 123],
+	// 				[180, 154, 136, 167, 166, 149, 136, 136],
+	// 				[128, 136, 123, 136, 154, 180, 198, 154],
+	// 				[123, 105, 110, 149, 136, 136, 180, 166],
+	// 				[110, 136, 123, 123, 123, 136, 154, 136] ];
+
+	var U = this.gen_mat( imgdata.width/8, imgdata.height/8 );
+	for( var col = 0; col < imgdata.width; col += 8 ){
+		for( var row = 0; row < imgdata.height; row += 8 ){
+			var rblock = this.get_section( imgdata, col, row, 0 );
+			var gblock = this.get_section( imgdata, col, row, 1 );
+			var bblock = this.get_section( imgdata, col, row, 2 );
+
+			var rcomp = this.compress_block( rblock, quant );	
+			var gcomp = this.compress_block( gblock, quant );		
+			var bcomp = this.compress_block( bblock, quant );			
+			U[row/8][col/8] = [rcomp, gcomp, bcomp];	
+		}
+	}
+
+	var nimgdata = this.ctx.createImageData(imgdata.width, imgdata.height);
+	var dimgdata = this.ctx.createImageData(imgdata.width, imgdata.height);
+	
+	var ret = null;
+	for( var col = 0; col < imgdata.width/8; col += 1 ){
+		for( var row = 0; row < imgdata.height/8; row += 1 ){
+			var rcomp = U[row][col][0];
+			var gcomp = U[row][col][1];	
+			var bcomp = U[row][col][2];	
+
+			dimgdata = this.put_section_highlight( dimgdata, rcomp, row*8, col*8, 0 ); 	
+			dimgdata = this.put_section_highlight( dimgdata, gcomp, row*8, col*8, 1 ); 	
+			dimgdata = this.put_section_highlight( dimgdata, bcomp, row*8, col*8, 2 ); 	
+
+			var rblock = this.decompress_block( rcomp, quant );
+			var gblock = this.decompress_block( gcomp, quant );
+			var bblock = this.decompress_block( bcomp, quant );	
+						
+			nimgdata = this.put_section( nimgdata, rblock, row*8, col*8, 0 ); 	
+			nimgdata = this.put_section( nimgdata, gblock, row*8, col*8, 1 ); 	
+			nimgdata = this.put_section( nimgdata, bblock, row*8, col*8, 2 ); 	
+		}
+	}
+
+	var nzeroes = 0;
+	for( var i = 0; i < dimgdata.data.length; ++i ){
+		if( dimgdata.data[i] == 0 ) nzeroes++;
+	}
+
+	var ratio = (dimgdata.data.length-nzeroes)/nimgdata.data.length;
+	var p = ratio*100;
+
+	add_elem("<div>Compressed data (black space represents 0 bits which do not need to be stored)</div>");
+	add_elem("<div>Estimated "+p.toFixed(2)+"% of original size.</div>");
+	add_obj( draw_data_to_canvas(dimgdata, false) );
+	add_elem("<br><br>");
+
+	return nimgdata;
+	//html_matrix( N, 1 );
+}
+
+/**
+ * Compress an 8x8 block of pixels.
+ * @param  {Array}	block 	An 8x8 Matrix array of pixel values
+ * @param  {int} 	level 	The quantization level
+ * @return {Array} 			An 8x8 Matrix array of compressed pixel values
+ */
+JPEG_Compressor.prototype.compress_block = function( block, level ){
+
+	//Multiply the DCT matrix in both directions to generate a 2D Transform
+	//Y = C * (X - 128) * Ct
+	var X = this.mat_add_cons( block, -128 ); 
+	var tmp = this.mat_mult(this.C, X);
+	var Y = this.mat_mult(tmp, this.Ct);
+
+	//Determine what scaler to multiply the Standard Quantization Matrix by
+	//depending on the quantization level
+	var Q;
+	if( level > 50 ){
+		Q = this.mat_cmult_clip(this.Q50, (100 - level)/50);
+	} else if( level < 50 ){
+		Q = this.mat_cmult_clip(this.Q50, 50/level);
+	} else {
+		Q = this.Q50;
+	}
+
+	//Quantize the resulting matrix from above
+	//Zij = Yij / Qij
+	var Z = this.mat_sdivide( Y, Q );
+
+	return Z;
+}
+
+/**
+ * Decompress an 8x8 block of pixels.
+ * @param  {Array}	block 	An 8x8 Matrix array of compressed pixel values
+ * @param  {int} 	level 	The quantization level
+ * @return {Array} 			An 8x8 Matrix array of decompressed pixel values
+ */
+JPEG_Compressor.prototype.decompress_block = function( block, level ){
+
+	var Q;
+	if( level > 50 ){
+		Q = this.mat_cmult_clip(this.Q50, (100 - level)/50);
+	} else if( level < 50 ){
+		Q = this.mat_cmult_clip(this.Q50, 50/level );
+	} else {
+		Q = this.Q50;
+	}
+
+	//Rij = Zij * Qij
+	var R = this.mat_smult( block, Q );
+
+	//N = round(Ct * R * C) + 128
+	var tmp2 = this.mat_mult(this.Ct, R);
+	var tmp3 = this.mat_mult(tmp2, this.C);
+	var N = this.mat_add_cons( tmp3, 128 );
+
+	return N;
+}
+
+/**
+ * Grab a certain color of 8x8 section of an HTML5 imagedata object
+ * @param  {Array} imgdata 	The HTML5 imagedata object to extract the matrix from
+ * @param  {int} x       	The starting row value of the 8x8 block
+ * @param  {int} y       	The starting col value of the 8x8 block
+ * @param  {int} off     	The offset in the HTML5 imagedata object (0 = red, 1 = blue, 2 = green)
+ * @return {Array}        	An 8x8 matrix of color values for either red, green, or blue
+ */
+JPEG_Compressor.prototype.get_section = function( imgdata, x, y, off ){
+	var ret = this.gen_mat(8, 8);
+
+	var jt = 0;
+	for( var j = x; j < x+8; ++j ){
+		var it = 0;
+		for( var i = y; i < y+8; ++i ){
+			var entry = (i*imgdata.width + j)*4+off;
+			ret[it][jt] = imgdata.data[entry];
+			it++;	
+		}
+		jt++;
+	}
+
+	return ret;
+}
+
+/**
+ * Put an 8x8 section of color values into an HTML5 imagedata object
+ * @param  {Array} imgdata 	The HTML5 imagedata object to put the values into
+ * @param  {Array} sect     The 8x8 section to insert
+ * @param  {int} x       	The starting row value of the 8x8 block
+ * @param  {int} y       	The starting col value of the 8x8 block
+ * @param  {int} off     	The offset in the HTML5 imagedata object (0 = red, 1 = blue, 2 = green)
+ * @return {Array}        	An 8x8 matrix of color values for either red, green, or blue
+ */
+JPEG_Compressor.prototype.put_section = function( imgdata, sect, x, y, off ){
+
+	for( var j = 0; j < 8; ++j ){
+		var jt = y + j;
+		for( var i = 0; i < 8; ++i ){
+			var it = x + i;
+
+			var entry = (it*imgdata.width + jt)*4+off;
+			imgdata.data[entry] = sect[i][j]; 
+			imgdata.data[entry-off+3] = 255;
+		}
+	}
+
+	return imgdata;
+}
+
+//Helper function for my writeup that just sets the color to white if the pixel is stored and black if it isn't
+JPEG_Compressor.prototype.put_section_highlight = function( imgdata, sect, x, y, off ){
+
+	for( var j = 0; j < 8; ++j ){
+		var jt = y + j;
+		for( var i = 0; i < 8; ++i ){
+			var it = x + i;
+
+			var entry = (it*imgdata.width + jt)*4+off;
+			if( sect[i][j] > 0 )
+				imgdata.data[entry] = 255; 
+			else 
+				imgdata.data[entry] = 0; 
+
+			imgdata.data[entry-off+3] = 255;
+		}
+	}
+
+	return imgdata;
+}
+
+/**
+ * Generate a n x m matrix of zeroes
+ * @param  {int} 	w 	Columns
+ * @param  {int} 	h 	Rows
+ * @return {Array}  	This matrix will be h x w and be all zeroes
+ */
+JPEG_Compressor.prototype.gen_mat = function( w, h ){
+	var ret = [];
+	for( var j = 0; j < h; ++j ){
+		ret[j] = [];
+		for( var i = 0; i < w; ++i ){
+			ret[j][i] = 0;
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * Generate a discrete cosine transform matrix.  There are a bunch of ways to do this, and this
+ * particular one was taken from John McGowan in "The Discrete Cosine Transform" at 
+ * http://www.rahul.net/jfm/dct.html
+ * @param  {int} 	w	 	Number of cols in the desired dct
+ * @param  {int} 	h		Number of rows in the desired dct
+ * @return {Array}   		A h x w matrix
+ */
+JPEG_Compressor.prototype.gen_dct = function( w, h ){
+	var n = w;
+
+	this.C = this.gen_mat( w, h );
+
+	for( var j = 0.0; j < h; ++j ){
+		for( var i = 0.0; i < w; ++i ){
+			//this.C[i][j] = Math.sqrt( 2.0/w )*Math.cos( (Math.PI*(i - 0.5)*(j - 0.5))/w );
+			if( i == 0 ){
+				this.C[i][j] = 1/Math.sqrt(n);
+			} else {
+				this.C[i][j] = Math.sqrt( 2.0/w )*Math.cos( (Math.PI*i*(2*j + 1))/(2*n) );
+			}
+		}
+	}
+
+}
+
+//Multiply 2 matrices together yadda yadda yadda
+JPEG_Compressor.prototype.mat_mult = function( A, B ){
+	var Ah = A.length;
+	var Aw = A[0].length;
+
+	var Bh = B.length;
+	var Bw = B[0].length;
+
+    if (Aw != Bh) {
+        console.log("error: incompatible sizes");
+        return null;
+    }
+ 
+    var result = [];
+    for (var i = 0; i < Ah; i++) {
+        result[i] = [];
+        for (var j = 0; j < Bw; j++) {
+            var sum = 0;
+            for (var k = 0; k < Aw; k++) {
+                sum += A[i][k] * B[k][j];
+            }
+            result[i][j] = sum;
+        }
+    }
+    
+    return result;
+}
+
+//Translate a matrix....
+JPEG_Compressor.prototype.mat_trans = function( A ){
+	var h = A.length;
+	var w = A[0].length;
+ 
+    var result = [];
+    for (var j = 0; j < h; j++) {
+        result[j] = [];
+        for (var i = 0; i < w; i++) {
+        	result[j][i] = A[i][j];
+        }
+    }
+    
+    return result;
+}
+
+//Add a constant to each element of a matrix
+JPEG_Compressor.prototype.mat_add_cons = function( A, c ){
+	var h = A.length;
+	var w = A[0].length;
+ 
+    var result = this.gen_mat( w, h );
+    for (var j = 0; j < h; j++) {
+        for (var i = 0; i < w; i++) {
+        	result[i][j] = A[i][j] + c;
+        }
+    }
+    
+    return result;
+}
+
+//Multiply each element of A by c, round that value, then clip it such that
+//no value can be over 255 and no value can be under 0
+JPEG_Compressor.prototype.mat_cmult_clip = function( A, c ){
+	var h = A.length;
+	var w = A[0].length;
+ 
+    var result = this.gen_mat( w, h );
+    for (var j = 0; j < h; j++) {
+        for (var i = 0; i < w; i++) {
+        	result[i][j] = Math.round(c*A[i][j]);
+        	if( result[i][j] > 255 ) result[i][j] = 255; 
+        	if( result[i][j] < 0 ) result[i][j] = 0;
+        }
+    }
+    
+    return result;
+}
+
+// RET[i][j] = A[i][j] / B[i][j]
+JPEG_Compressor.prototype.mat_sdivide = function( A, B ){
+	var h = A.length;
+	var w = A[0].length;
+ 
+    var result = this.gen_mat( w, h );
+
+    for (var j = 0; j < h; j++) {
+        for (var i = 0; i < w; i++) {
+        	result[i][j] = Math.round( A[i][j]/B[i][j] );
+        }
+    }
+    
+    return result;
+}
+
+// RET[i][j] = A[i][j] * B[i][j]
+JPEG_Compressor.prototype.mat_smult = function( A, B ){
+	var h = A.length;
+	var w = A[0].length;
+ 
+    var result = this.gen_mat( w, h );
+
+    for (var j = 0; j < h; j++) {
+        for (var i = 0; i < w; i++) {
+        	result[i][j] = Math.round( A[i][j]*B[i][j] );
+        }
+    }
+    
+    return result;
+}
+
+</script>
+
+</body>
+</html>

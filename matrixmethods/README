@@ -1,0 +1,9 @@
+APPM 3310 Final Project by Benjamin Brown
+
+JPEG 1992 Image Compression using a DCT
+
+Load this into a web browser (I wrote it on chrome), and it will take an image, 
+compress it with high and low quality compression, and finally display it and it's
+compressed data.
+
+I've documented all the important parts.  
